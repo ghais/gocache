@@ -1,5 +1,6 @@
 gocache
 =======
+[![Build Status](https://travis-ci.org/ghais/gocache.png?branch=master)](https://travis-ci.org/ghais/gocache)
 
 A General LRU Caching for Go
 
