@@ -22,7 +22,7 @@ type LRUCache struct {
 
 	// list & table of *entry objects
 	list  *list.List
-	table map[interface {}]*list.Element
+	table map[interface{}]*list.Element
 
 	// Our current size, in bytes. Obviously a gross simplification and low-grade
 	// approximation.
@@ -30,6 +30,8 @@ type LRUCache struct {
 
 	// How many bytes we are limiting the cache to.
 	capacity uint64
+
+	Evict func(k interface{}, v Value)
 }
 
 // Values that go into LRUCache need to satisfy this interface.
@@ -38,12 +40,12 @@ type Value interface {
 }
 
 type Item struct {
-	Key   interface {}
+	Key   interface{}
 	Value Value
 }
 
 type entry struct {
-	key           interface {}
+	key           interface{}
 	value         Value
 	size          int
 	time_accessed time.Time
@@ -52,12 +54,12 @@ type entry struct {
 func NewLRUCache(capacity uint64) *LRUCache {
 	return &LRUCache{
 		list:     list.New(),
-		table:    make(map[interface {}]*list.Element),
+		table:    make(map[interface{}]*list.Element),
 		capacity: capacity,
 	}
 }
 
-func (self *LRUCache) Get(key interface {}) (v Value, ok bool) {
+func (self *LRUCache) Get(key interface{}) (v Value, ok bool) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
@@ -69,7 +71,7 @@ func (self *LRUCache) Get(key interface {}) (v Value, ok bool) {
 	return element.Value.(*entry).value, true
 }
 
-func (self *LRUCache) Set(key interface {}, value Value) {
+func (self *LRUCache) Set(key interface{}, value Value) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
@@ -80,7 +82,7 @@ func (self *LRUCache) Set(key interface {}, value Value) {
 	}
 }
 
-func (self *LRUCache) SetIfAbsent(key interface {}, value Value) {
+func (self *LRUCache) SetIfAbsent(key interface{}, value Value) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
@@ -91,7 +93,7 @@ func (self *LRUCache) SetIfAbsent(key interface {}, value Value) {
 	}
 }
 
-func (self *LRUCache) Delete(key interface {}) bool {
+func (self *LRUCache) Delete(key interface{}) bool {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
@@ -100,9 +102,14 @@ func (self *LRUCache) Delete(key interface {}) bool {
 		return false
 	}
 
+	entry := element.Value.(*entry)
+
 	self.list.Remove(element)
 	delete(self.table, key)
-	self.size -= uint64(element.Value.(*entry).size)
+	self.size -= uint64(entry.size)
+	if self.Evict != nil {
+		self.Evict(entry.key, entry.value)
+	}
 	return true
 }
 
@@ -111,7 +118,7 @@ func (self *LRUCache) Clear() {
 	defer self.mu.Unlock()
 
 	self.list.Init()
-	self.table = make(map[interface {}]*list.Element)
+	self.table = make(map[interface{}]*list.Element)
 	self.size = 0
 }
 
@@ -140,11 +147,11 @@ func (self *LRUCache) StatsJSON() string {
 	return fmt.Sprintf("{\"Length\": %v, \"Size\": %v, \"Capacity\": %v, \"OldestAccess\": \"%v\"}", l, s, c, o)
 }
 
-func (self *LRUCache) Keys() []interface {} {
+func (self *LRUCache) Keys() []interface{} {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
-	keys := make([]interface {}, 0, self.list.Len())
+	keys := make([]interface{}, 0, self.list.Len())
 	for e := self.list.Front(); e != nil; e = e.Next() {
 		keys = append(keys, e.Value.(*entry).key)
 	}
@@ -178,7 +185,7 @@ func (self *LRUCache) moveToFront(element *list.Element) {
 	element.Value.(*entry).time_accessed = time.Now()
 }
 
-func (self *LRUCache) addNew(key interface {}, value Value) {
+func (self *LRUCache) addNew(key interface{}, value Value) {
 	newEntry := &entry{key, value, value.Size(), time.Now()}
 	element := self.list.PushFront(newEntry)
 	self.table[key] = element
@@ -194,5 +201,8 @@ func (self *LRUCache) checkCapacity() {
 		self.list.Remove(delElem)
 		delete(self.table, delValue.key)
 		self.size -= uint64(delValue.size)
+		if self.Evict != nil {
+			self.Evict(delValue.key, delValue.value)
+		}
 	}
 }
