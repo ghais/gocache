@@ -193,6 +193,11 @@ func TestLRUIsEvicted(t *testing.T) {
 	size := uint64(3)
 	cache := NewLRUCache(size)
 
+	evicts := map[interface{}]struct{}{"key3": {}}
+	cache.Evict = func(k interface{}, v Value) {
+		delete(evicts, k)
+	}
+
 	cache.Set("key1", &CacheValue{1})
 	cache.Set("key2", &CacheValue{1})
 	cache.Set("key3", &CacheValue{1})
@@ -210,5 +215,9 @@ func TestLRUIsEvicted(t *testing.T) {
 	// The least recently used one should have been evicted.
 	if _, ok := cache.Get("key3"); ok {
 		t.Error("Least recently used element was not evicted.")
+	}
+
+	if len(evicts) != 0 {
+		t.Errorf("Expected not evicted: %+v", evicts)
 	}
 }

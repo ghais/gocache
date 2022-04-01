@@ -30,6 +30,8 @@ type LRUCache struct {
 
 	// How many bytes we are limiting the cache to.
 	capacity uint64
+
+	Evict func(k interface{}, v Value)
 }
 
 // Values that go into LRUCache need to satisfy this interface.
@@ -100,9 +102,14 @@ func (self *LRUCache) Delete(key interface{}) bool {
 		return false
 	}
 
+	entry := element.Value.(*entry)
+
 	self.list.Remove(element)
 	delete(self.table, key)
-	self.size -= uint64(element.Value.(*entry).size)
+	self.size -= uint64(entry.size)
+	if self.Evict != nil {
+		self.Evict(entry.key, entry.value)
+	}
 	return true
 }
 
@@ -194,5 +201,8 @@ func (self *LRUCache) checkCapacity() {
 		self.list.Remove(delElem)
 		delete(self.table, delValue.key)
 		self.size -= uint64(delValue.size)
+		if self.Evict != nil {
+			self.Evict(delValue.key, delValue.value)
+		}
 	}
 }
